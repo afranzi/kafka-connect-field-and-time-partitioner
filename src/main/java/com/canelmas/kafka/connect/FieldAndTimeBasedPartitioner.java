@@ -43,28 +43,29 @@ public final class FieldAndTimeBasedPartitioner<T> extends TimeBasedPartitioner<
     private long partitionDurationMs;
     private DateTimeFormatter formatter;
     private TimestampExtractor timestampExtractor;
-
     private PartitionFieldExtractor partitionFieldExtractor;
 
     protected void init(long partitionDurationMs, String pathFormat, Locale locale, DateTimeZone timeZone, Map<String, Object> config) {
 
-        this.delim = (String)config.get("directory.delim");
+        this.delim = (String) config.get("directory.delim");
         this.partitionDurationMs = partitionDurationMs;
 
         try {
-
             this.formatter = getDateTimeFormatter(pathFormat, timeZone).withLocale(locale);
-            this.timestampExtractor = this.newTimestampExtractor((String)config.get("timestamp.extractor"));
+            this.timestampExtractor = this.newTimestampExtractor((String) config.get("timestamp.extractor"));
             this.timestampExtractor.configure(config);
 
-            this.partitionFieldExtractor = new PartitionFieldExtractor((String)config.get("partition.field"));
+            String partitionField = (String) config.get("partition.field");
+            String partitionFieldName = (String) config.get("partition.name");
+
+            this.partitionFieldExtractor = new PartitionFieldExtractor(partitionField, partitionFieldName);
 
         } catch (IllegalArgumentException e) {
 
             ConfigException ce = new ConfigException("path.format", pathFormat, e.getMessage());
             ce.initCause(e);
             throw ce;
-            
+
         }
     }
 
@@ -78,9 +79,9 @@ public final class FieldAndTimeBasedPartitioner<T> extends TimeBasedPartitioner<
         long partitionedTime = adjustedTimestamp / timeGranularityMs * timeGranularityMs;
 
         return timeZone.convertLocalToUTC(partitionedTime, false);
-        
+
     }
-    
+
     public String encodePartition(SinkRecord sinkRecord, long nowInMillis) {
 
         final Long timestamp = this.timestampExtractor.extract(sinkRecord, nowInMillis);
@@ -109,28 +110,28 @@ public final class FieldAndTimeBasedPartitioner<T> extends TimeBasedPartitioner<
 
         } else if (partitionField == null) {
 
-            String msg = "Unable to determine partition field using partition.field '" + partitionField  + "' for record: " + sinkRecord;
+            String msg = "Unable to determine partition field using partition.field '" + partitionField + "' for record: " + sinkRecord;
             log.error(msg);
             throw new ConnectException(msg);
 
-        }  else {
-
+        } else {
             DateTime bucket = new DateTime(getPartition(this.partitionDurationMs, timestamp.longValue(), this.formatter.getZone()));
             return partitionField + this.delim + bucket.toString(this.formatter);
-            
+
         }
     }
 
     static class PartitionFieldExtractor {
 
         private final String fieldName;
+        private final String partitionName;
 
-        PartitionFieldExtractor(String fieldName) {
+        PartitionFieldExtractor(String fieldName, String partitionName) {
             this.fieldName = fieldName;
+            this.partitionName = partitionName;
         }
 
-        String extract(ConnectRecord<?> record) {
-
+        private String extractValue(ConnectRecord<?> record) {
             Object value = record.value();
 
             if (value instanceof Struct) {
@@ -150,8 +151,13 @@ public final class FieldAndTimeBasedPartitioner<T> extends TimeBasedPartitioner<
 
                 FieldAndTimeBasedPartitioner.log.error("Value is not of Struct or Map type.");
                 throw new PartitionException("Error encoding partition.");
-                
+
             }
+        }
+
+        String extract(ConnectRecord<?> record) {
+            String value = extractValue(record);
+            return String.format("%s=%s", this.partitionName, value);
         }
     }
 }

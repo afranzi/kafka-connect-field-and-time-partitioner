@@ -1,37 +1,27 @@
-### Kafka Connect Field and Time Based Partitioner
+# Kafka Connect Field and Time Based Partitioner
 
 - Partition initially by a custom field and then by time.
 - It extends **[TimeBasedPartitioner](https://github.com/confluentinc/kafka-connect-storage-common/blob/master/partitioner/src/main/java/io/confluent/connect/storage/partitioner/TimeBasedPartitioner.java)**, so any existing time based partition config should be fine.
-- In order to make it work, set `"partitioner.class"="com.canelmas.kafka.connect.FieldAndTimeBasedPartitioner"` and `"partition.field"="<custom field in your record>"`
 
-```bash
-KCONNECT_NODES=("localhost:18083" "localhost:28083" "localhost:38083")
+## Required properties
 
-for i in "${!KCONNECT_NODES[@]}"; do
-    curl ${KCONNECT_NODES[$i]}/connectors -XPOST -H 'Content-type: application/json' -H 'Accept: application/json' -d '{
-        "name": "connect-s3-sink-'$i'",
-        "config": {
-            "topics": "events",
-            "connector.class": "io.confluent.connect.s3.S3SinkConnector",
-            "tasks.max" : 4,
-            "flush.size": 100,
-            "rotate.schedule.interval.ms": "-1",
-            "rotate.interval.ms": "-1",
-            "s3.region" : "eu-west-1",
-            "s3.bucket.name" : "byob-raw",
-            "s3.compression.type": "gzip",
-            "topics.dir": "topics",
-            "storage.class" : "io.confluent.connect.s3.storage.S3Storage",
-            "partitioner.class": "com.canelmas.kafka.connect.FieldAndTimeBasedPartitioner",
-            "partition.duration.ms" : "3600000",
-            "path.format": "YYYY-MM-dd",
-            "locale" : "US",
-            "timezone" : "UTC",
-            "schema.compatibility": "NONE",
-            "format.class" : "io.confluent.connect.s3.format.json.JsonFormat",
-            "timestamp.extractor": "Record",
-            "partition.field" : "appId"
-        }
-    }'
-done
+- `partitioner.class=com.canelmas.kafka.connect.FieldAndTimeBasedPartitioner`
+- `partition.field=<custom field in your record>`
+- `partition.name=<partition_name>`
+
+## Config Example
+
 ```
+partition.field=data.type
+partition.name=sensor
+path.format='year='YYYY/'month='MM/'day='dd/'hour='HH
+topics.dir=garden/sensors
+s3.bucket.name=our_s3_bucket
+```
+
+This configuration will produce the following output:
+
+- `s3://our_s3_bucket/garden/sensors/sensor=lux/year=2019/month=06/day=12/part-xxxx.json`
+- `s3://our_s3_bucket/garden/sensors/sensor=soil_moisture/year=2019/month=06/day=12/part-xxxx.json`
+- `s3://our_s3_bucket/garden/sensors/sensor=sound/year=2019/month=06/day=12/part-xxxx.json`
+- `s3://our_s3_bucket/garden/sensors/sensor=temperature/year=2019/month=06/day=12/part-xxxx.json`
